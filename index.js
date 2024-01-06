@@ -1,26 +1,28 @@
-import ffi from 'ffi-napi';
-import path from 'path';
+#!/usr/bin/env node
+
+const ffi = require('ffi-napi');
+const path = require('path');
 
 var lib = ffi.Library(path.join(__dirname, './target/release/libffi'), {
   require: ['string', ['string']],
 });
 require.extensions['.ts'] = require.extensions['.js'];
 
-function requirePatch() {
-  const originalRequire = require;
-  require('module').prototype.require = function (module) {
-    const path = require.resolve(module);
+const originalRequire = require;
+require('module').prototype.require = function (module) {
+  const path = require.resolve(module);
 
-    if (path.endsWith('.js')) {
-      return originalRequire(path);
-    }
+  if (path.endsWith('.js')) {
+    return originalRequire(path);
+  }
 
-    const str = lib.require(path);
+  const str = lib.require(path);
 
-    return eval(str);
-  };
-}
+  return eval(str);
+};
 
-requirePatch('eslint');
-const source = require('./test');
-// console.log({ source });
+const filePath = path.isAbsolute(process.argv[2])
+  ? process.argv[2]
+  : path.join(__dirname, process.argv[2]);
+
+require(filePath);

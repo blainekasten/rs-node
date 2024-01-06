@@ -1,4 +1,4 @@
-use super::{ast::NodeASTType, Node};
+use super::ast::NodeASTType;
 
 pub trait Pauser {
     fn is_paused_after_evaluating(&mut self, next_type: NodeASTType) -> bool;

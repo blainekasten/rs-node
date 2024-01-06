@@ -1,14 +1,12 @@
 {
-  "name": "ts-node",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "rs-node",
+  "version": "0.0.1",
+  "bin": {
+    "rs-node": "./index.js"
+  },
   "scripts": {
     "test": "cargo build --release && jest"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "ffi-napi": "^4.0.3"
   },
