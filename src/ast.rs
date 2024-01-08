@@ -3,10 +3,13 @@ use std::fmt;
 #[derive(Copy, Clone, PartialEq)]
 pub enum NodeASTType {
     Unknown,
+    EOL,
     VariableDeclarator,
     VariableDeclaration,
     VariableTypeSeperator,
     TypeAnnotation,
+    TypeUnionSeperator,
+    OrStatement,
     AssignmentOperator,
     KeywordFunction,
     KeywordDeclare,
@@ -17,9 +20,15 @@ pub enum NodeASTType {
     ClosingParenthesis,
     OpeningBracket,
     ClosingBracket,
+    OpeningBrace,
+    ClosingBrace,
     Identifier,
     ExportDeclaration,
     WhiteSpace,
+    Terminator,
+    CommentLine,
+    CommentMultilineOpener,
+    CommentMultilineCloser,
 }
 
 impl fmt::Display for NodeASTType {
@@ -29,11 +38,14 @@ impl fmt::Display for NodeASTType {
             "{}",
             match self {
                 NodeASTType::Unknown => "Unknown",
+                NodeASTType::EOL => "EOL",
                 NodeASTType::VariableDeclarator => "VariableDeclarator",
                 NodeASTType::VariableDeclaration => "VariableDeclaration",
                 NodeASTType::VariableTypeSeperator => "VariableTypeSeperator",
                 NodeASTType::AssignmentOperator => "AssignmentOperator",
                 NodeASTType::TypeAnnotation => "TypeAnnotation",
+                NodeASTType::TypeUnionSeperator => "TypeUnionSeperator",
+                NodeASTType::OrStatement => "OrStatement",
                 NodeASTType::KeywordFunction => "KeywordFunction",
                 NodeASTType::KeywordDeclare => "KeywordDeclare",
                 NodeASTType::KeywordType => "KeywordType",
@@ -42,10 +54,16 @@ impl fmt::Display for NodeASTType {
                 NodeASTType::FunctionDeclaration => "FunctionDeclaration",
                 NodeASTType::OpeningBracket => "OpeningBracket",
                 NodeASTType::ClosingBracket => "ClosingBracket",
+                NodeASTType::OpeningBrace => "OpeningBrace",
+                NodeASTType::ClosingBrace => "ClosingBrace",
                 NodeASTType::OpeningParenthesis => "OpeningParenthesis",
                 NodeASTType::ClosingParenthesis => "ClosingParenthesis",
                 NodeASTType::Identifier => "Identifier",
                 NodeASTType::WhiteSpace => "WhiteSpace",
+                NodeASTType::Terminator => "Terminator",
+                NodeASTType::CommentLine => "CommentLine",
+                NodeASTType::CommentMultilineOpener => "CommentMultilineOpener",
+                NodeASTType::CommentMultilineCloser => "CommentMultilineCloser",
             }
         )
     }

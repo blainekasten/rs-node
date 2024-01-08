@@ -1,5 +1,5 @@
 type Obj = {};
-type Arry = [];
+type arry = [];
 type lit = string;
 
 function foo() {}

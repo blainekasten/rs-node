@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
-use self::pauser::KeywordTypePauser;
+use self::pauser::{CommentPauser, KeywordTypePauser};
 
 struct Tree {
     output: String,
@@ -25,6 +25,7 @@ struct Tree {
     // pausers
     keyword_declare_pauser: KeywordDeclarePauser,
     keyword_type_pauser: KeywordTypePauser,
+    comment_pauser: CommentPauser,
 }
 
 impl Tree {
@@ -45,6 +46,7 @@ impl Tree {
             // pausers
             keyword_declare_pauser: KeywordDeclarePauser::new(),
             keyword_type_pauser: KeywordTypePauser::new(),
+            comment_pauser: CommentPauser::new(),
         };
     }
 
@@ -77,6 +79,12 @@ impl Tree {
                         .keyword_declare_pauser
                         .is_paused_after_evaluating(node_type);
                 }
+                NodeASTType::CommentLine => {
+                    self.is_paused = self.comment_pauser.is_paused_after_evaluating(node_type);
+                }
+                NodeASTType::CommentMultilineOpener => {
+                    self.is_paused = self.comment_pauser.is_paused_after_evaluating(node_type);
+                }
                 _ => {
                     self.is_paused = false;
                 }
@@ -89,7 +97,7 @@ impl Tree {
         mut_node.value = value.to_string();
     }
 
-    pub fn commit(&mut self, seperator: &str) -> Node {
+    pub fn commit(&mut self) -> Node {
         // Derive information about node before comitting
         {
             let mut committed_node = RefCell::borrow_mut(&self.current_node);
@@ -98,36 +106,55 @@ impl Tree {
         let returnable_node = self.current_node.clone().as_ref().borrow().clone();
         let current_node = Rc::clone(&self.current_node.clone());
 
-        if returnable_node.node_type == NodeASTType::KeywordDeclare {
-            self.pause_writing(NodeASTType::KeywordDeclare);
-        }
-        if returnable_node.node_type == NodeASTType::KeywordType {
-            self.pause_writing(NodeASTType::KeywordType);
-        }
-        if returnable_node.node_type == NodeASTType::KeywordInterface {
-            self.pause_writing(NodeASTType::KeywordDeclare);
-        }
-
         if self.is_paused == false {
-            match self.current_node.borrow().node_type {
-                NodeASTType::WhiteSpace => {}
-                NodeASTType::TypeAnnotation => {}
-                NodeASTType::KeywordInterface => {}
-                NodeASTType::KeywordType => {}
-                NodeASTType::KeywordDeclare => {}
-                NodeASTType::VariableTypeSeperator => {}
-                _ => {
-                    self.output = format!(
-                        "{}{}{}",
-                        self.output,
-                        self.current_node.borrow().value.to_string(),
-                        seperator
-                    );
+            if returnable_node.node_type == NodeASTType::KeywordDeclare {
+                self.pause_writing(NodeASTType::KeywordDeclare);
+            }
+            if returnable_node.node_type == NodeASTType::KeywordType {
+                self.pause_writing(NodeASTType::KeywordType);
+            }
+            if returnable_node.node_type == NodeASTType::KeywordInterface {
+                self.pause_writing(NodeASTType::KeywordDeclare);
+            }
+            if returnable_node.node_type == NodeASTType::CommentLine {
+                self.pause_writing(NodeASTType::CommentLine);
+            }
+            if returnable_node.node_type == NodeASTType::CommentMultilineOpener {
+                self.pause_writing(NodeASTType::CommentMultilineOpener);
+            }
+
+            if self.is_paused == false {
+                match self.current_node.borrow().node_type {
+                    NodeASTType::WhiteSpace => {}
+                    NodeASTType::EOL => {}
+                    NodeASTType::TypeAnnotation => {}
+                    NodeASTType::KeywordInterface => {}
+                    NodeASTType::KeywordType => {}
+                    NodeASTType::KeywordDeclare => {}
+                    NodeASTType::VariableTypeSeperator => {}
+                    _ => {
+                        println!(
+                            "appending value: ({}) with seperator: ({})",
+                            self.current_node.borrow().value.to_string().as_str(),
+                            self.current_node.borrow().seperator().to_string().as_str()
+                        );
+                        self.output += self.current_node.borrow().value.to_string().as_str();
+                        self.output += self.current_node.borrow().seperator().to_string().as_str();
+                    }
                 }
             }
         }
 
-        self.consider_resuming_writing(returnable_node.node_type);
+        if self.is_paused {
+            self.consider_resuming_writing(returnable_node.node_type);
+        }
+
+        // If the node was just white space we dont want to keep it in our list
+        // of nodes to print
+        if self.current_node.borrow().value.trim() == "" {
+            current_node.borrow_mut().reset();
+            return returnable_node;
+        }
 
         // commit and
         // reset the current node tree for the next characters
@@ -152,10 +179,25 @@ struct Node {
 }
 
 impl Node {
+    fn reset(&mut self) {
+        self.value = String::new();
+        self.node_type = NodeASTType::Unknown;
+    }
+
+    pub fn seperator(&self) -> &str {
+        match self.node_type {
+            NodeASTType::KeywordFunction => " ",
+            NodeASTType::ExportDeclaration => " ",
+            NodeASTType::VariableDeclarator => " ",
+            _ => "",
+        }
+    }
+
     fn get_parent(&self) -> Option<Rc<RefCell<Node>>> {
         match &self.parent {
             Some(parent) => {
-                if parent.borrow().node_type == NodeASTType::WhiteSpace {
+                let parent_type = parent.borrow().node_type;
+                if parent_type == NodeASTType::WhiteSpace || parent_type == NodeASTType::EOL {
                     return match parent.borrow().get_parent() {
                         Some(node) => Some(node),
                         None => None,
@@ -173,29 +215,13 @@ impl Node {
         }
     }
 
-    fn crawl_parent_for(&self, node_type: NodeASTType) -> Option<Rc<RefCell<Node>>> {
-        let mut parent = self.get_parent();
-        loop {
-            match parent {
-                Some(node) => {
-                    let node_type = node.borrow().node_type;
-                    if node_type == node_type {
-                        return Some(node);
-                    }
-                    parent = node.borrow().get_parent();
-                }
-                None => {
-                    return None;
-                }
-            }
-        }
-    }
-
     pub fn detect_type(&self) -> NodeASTType {
         match self.value.as_str() {
             "declare" => NodeASTType::KeywordDeclare,
             "export" => NodeASTType::ExportDeclaration,
             "const" => NodeASTType::VariableDeclarator,
+            "let" => NodeASTType::VariableDeclarator,
+            "var" => NodeASTType::VariableDeclarator,
             "function" => NodeASTType::KeywordFunction,
             "interface" => NodeASTType::KeywordInterface,
             "type" => NodeASTType::KeywordType,
@@ -203,6 +229,14 @@ impl Node {
             "}" => NodeASTType::ClosingBracket,
             "(" => NodeASTType::OpeningParenthesis,
             ")" => NodeASTType::ClosingParenthesis,
+            "[" => NodeASTType::OpeningBrace,
+            "||" => NodeASTType::OrStatement,
+            "|" => NodeASTType::TypeUnionSeperator,
+            "]" => NodeASTType::ClosingBrace,
+            ";" => NodeASTType::Terminator,
+            "//" => NodeASTType::CommentLine,
+            "/*" => NodeASTType::CommentMultilineOpener,
+            "*/" => NodeASTType::CommentMultilineCloser,
             ":" => {
                 let parent = self.get_parent();
                 let parent_type = match parent {
@@ -228,12 +262,11 @@ impl Node {
 
                 return NodeASTType::Unknown;
             }
-            "" => {
-                return NodeASTType::WhiteSpace;
-            }
+            "\n" => NodeASTType::EOL,
+            "" => NodeASTType::WhiteSpace,
             "=" => {
-                /// Do we really need this to consider all the parent types?
-                /// Should this just always be an assignment operator??
+                // Do we really need this to consider all the parent types?
+                // Should this just always be an assignment operator??
                 let parent_type = match self.get_parent() {
                     Some(node) => node.borrow().node_type,
                     None => NodeASTType::Unknown,
@@ -296,60 +329,85 @@ pub fn parser(contents: String) -> String {
         match char {
             ' ' => {
                 // end of previous node, commit this one.
-                tree.commit(" ");
+                tree.commit();
             }
             '\n' => {
                 // end of previous node, commit this one.
-                tree.commit("");
+                tree.commit();
+                tree.update_current_value("\n");
+                tree.commit();
             }
             '{' => {
-                tree.commit("");
+                tree.commit();
                 tree.update_current_value("{");
-                tree.commit("");
+                tree.commit();
             }
             '}' => {
-                tree.commit("");
+                tree.commit();
                 tree.update_current_value("}");
-                tree.commit("");
+                tree.commit();
             }
-
             '.' => {
                 // end of previous node, commit this one.
-                tree.commit(".");
+                tree.commit();
+                tree.update_current_value(".");
+                tree.commit();
             }
             ':' => {
                 // start of annotation node.
                 // commit previous node.
-                tree.commit("");
+                tree.commit();
                 tree.update_current_value(":");
                 // tree.commit();
             }
             ';' => {
                 // end of previous node, commit this one.
-                tree.commit("");
+                tree.commit();
                 tree.update_current_value(";");
-                tree.commit("");
+                tree.commit();
+            }
+            '[' => {
+                tree.commit();
+                tree.update_current_value("[");
+                tree.commit();
+            }
+            ']' => {
+                tree.commit();
+                tree.update_current_value("]");
+                tree.commit();
             }
             '(' => {
-                tree.commit("");
+                tree.commit();
                 tree.update_current_value("(");
-                tree.commit("");
+                tree.commit();
             }
             ')' => {
-                tree.commit("");
+                tree.commit();
                 tree.update_current_value(")");
-                tree.commit("");
+                tree.commit();
             }
             _ => {
                 let mut value = tree.current_node.borrow_mut().value.to_owned();
                 value.push(char);
 
-                tree.update_current_value(value.as_str())
+                tree.update_current_value(value.as_str());
+
+                // Have to handle this here because rust doesnt like me creating a string with
+                // single quotes with // in it.
+                if tree.current_node.borrow().value == "//".to_string() {
+                    tree.commit();
+                }
+                if tree.current_node.borrow().value == "/*".to_string() {
+                    tree.commit();
+                }
+                if tree.current_node.borrow().value == "*/".to_string() {
+                    tree.commit();
+                }
             }
         }
     }
 
-    tree.debug();
+    // tree.debug();
 
     return tree.output;
 }
