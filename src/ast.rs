@@ -2,8 +2,10 @@ use std::fmt;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum NodeASTType {
+    Module,
     Unknown,
     EOL,
+    CommaSeperator,
     VariableDeclarator,
     VariableDeclaration,
     VariableTypeSeperator,
@@ -11,6 +13,7 @@ pub enum NodeASTType {
     TypeUnionSeperator,
     OrStatement,
     AssignmentOperator,
+    KeywordAs,
     KeywordFunction,
     KeywordDeclare,
     KeywordInterface,
@@ -39,6 +42,7 @@ impl fmt::Display for NodeASTType {
             match self {
                 NodeASTType::Unknown => "Unknown",
                 NodeASTType::EOL => "EOL",
+                NodeASTType::CommaSeperator => "CommaSeperator",
                 NodeASTType::VariableDeclarator => "VariableDeclarator",
                 NodeASTType::VariableDeclaration => "VariableDeclaration",
                 NodeASTType::VariableTypeSeperator => "VariableTypeSeperator",
@@ -47,6 +51,7 @@ impl fmt::Display for NodeASTType {
                 NodeASTType::TypeUnionSeperator => "TypeUnionSeperator",
                 NodeASTType::OrStatement => "OrStatement",
                 NodeASTType::KeywordFunction => "KeywordFunction",
+                NodeASTType::KeywordAs => "KeywordAs",
                 NodeASTType::KeywordDeclare => "KeywordDeclare",
                 NodeASTType::KeywordType => "KeywordType",
                 NodeASTType::KeywordInterface => "KeywordInterface",

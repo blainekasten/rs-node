@@ -7,4 +7,6 @@ interface Foo {
   };
 }
 
+interface Bar extends Foo {}
+
 function foo() {}

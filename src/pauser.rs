@@ -1,5 +1,3 @@
-use crate::parser::Node;
-
 use super::ast::NodeASTType;
 
 pub trait Pauser {
@@ -7,6 +5,11 @@ pub trait Pauser {
 }
 
 pub struct NotPauser {}
+impl NotPauser {
+    pub fn new() -> NotPauser {
+        NotPauser {}
+    }
+}
 impl Pauser for NotPauser {
     fn is_paused_after_evaluating(&mut self, _next_type: NodeASTType) -> bool {
         true
@@ -24,10 +27,15 @@ impl CommentPauser {
             is_multiline: false,
         }
     }
+
+    fn reset(&mut self) {
+        self.is_singline = false;
+        self.is_multiline = false;
+    }
 }
 impl Pauser for CommentPauser {
     fn is_paused_after_evaluating(&mut self, next_type: NodeASTType) -> bool {
-        match next_type {
+        let is_paused = match next_type {
             NodeASTType::CommentLine => {
                 self.is_singline = true;
                 true
@@ -47,7 +55,13 @@ impl Pauser for CommentPauser {
 
                 false
             }
+        };
+
+        if !is_paused {
+            self.reset()
         }
+
+        is_paused
     }
 }
 
@@ -186,6 +200,11 @@ impl KeywordDeclarePauser {
             closing_brace_count: 0,
         }
     }
+
+    fn reset(&mut self) {
+        self.opening_brace_count = 0;
+        self.closing_brace_count = 0;
+    }
 }
 
 impl Pauser for KeywordDeclarePauser {
@@ -196,6 +215,27 @@ impl Pauser for KeywordDeclarePauser {
             self.closing_brace_count += 1;
         }
 
-        !(self.opening_brace_count > 0 && self.opening_brace_count == self.closing_brace_count)
+        if self.opening_brace_count > 0 && self.opening_brace_count == self.closing_brace_count {
+            self.reset();
+            return false;
+        }
+
+        true
+    }
+}
+
+/// `as` pause writing until type definition is completed.
+pub struct KeywordAsPauser {}
+impl KeywordAsPauser {
+    pub fn new() -> KeywordAsPauser {
+        KeywordAsPauser {}
+    }
+}
+impl Pauser for KeywordAsPauser {
+    fn is_paused_after_evaluating(&mut self, next_type: NodeASTType) -> bool {
+        match next_type {
+            NodeASTType::Terminator => false,
+            _ => true,
+        }
     }
 }

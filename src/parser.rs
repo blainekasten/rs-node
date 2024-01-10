@@ -10,7 +10,13 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
-use self::pauser::{CommentPauser, KeywordTypePauser};
+use self::pauser::{CommentPauser, KeywordAsPauser, KeywordTypePauser};
+
+const module_node: Node = Node {
+    parent: None,
+    node_type: NodeASTType::Module,
+    value: String::new()
+}
 
 struct Tree {
     output: String,
@@ -25,6 +31,7 @@ struct Tree {
     // pausers
     keyword_declare_pauser: KeywordDeclarePauser,
     keyword_type_pauser: KeywordTypePauser,
+    keyword_as_pauser: KeywordAsPauser,
     comment_pauser: CommentPauser,
 }
 
@@ -33,10 +40,9 @@ impl Tree {
         return Tree {
             output: String::new(),
             id_counter: 0,
-            nodes: vec![],
+            nodes: vec![Rc::new(RefCell::new(module_node))],
             current_node: Rc::new(RefCell::new(Node {
-                id: 0,
-                parent: None,
+                parent: Rc::new(RefCell::new(module_node)),
                 value: String::new(),
                 node_type: NodeASTType::Unknown,
             })),
@@ -46,15 +52,15 @@ impl Tree {
             // pausers
             keyword_declare_pauser: KeywordDeclarePauser::new(),
             keyword_type_pauser: KeywordTypePauser::new(),
+            keyword_as_pauser: KeywordAsPauser::new(),
             comment_pauser: CommentPauser::new(),
         };
     }
 
     pub fn debug(&self) {
         for token in self.nodes.iter() {
-            // let t = *token;
-            let t = Rc::clone(token);
-            println!("node: {}", t.as_ref().borrow());
+            let t = token.clone();
+            println!("node: {}", t.borrow());
         }
     }
 
@@ -68,26 +74,24 @@ impl Tree {
     // it will only resume once the number of opening and closing brackets are equal.
     pub fn consider_resuming_writing(&mut self, node_type: NodeASTType) {
         if self.is_paused {
-            match self.paused_node_type {
-                NodeASTType::KeywordType => {
-                    self.is_paused = self
-                        .keyword_type_pauser
-                        .is_paused_after_evaluating(node_type);
-                }
-                NodeASTType::KeywordDeclare => {
-                    self.is_paused = self
-                        .keyword_declare_pauser
-                        .is_paused_after_evaluating(node_type);
+            self.is_paused = match self.paused_node_type {
+                NodeASTType::KeywordType => self
+                    .keyword_type_pauser
+                    .is_paused_after_evaluating(node_type),
+                NodeASTType::KeywordDeclare => self
+                    .keyword_declare_pauser
+                    .is_paused_after_evaluating(node_type),
+                NodeASTType::KeywordAs => {
+                    self.keyword_as_pauser.is_paused_after_evaluating(node_type)
                 }
                 NodeASTType::CommentLine => {
-                    self.is_paused = self.comment_pauser.is_paused_after_evaluating(node_type);
+                    self.comment_pauser.is_paused_after_evaluating(node_type)
                 }
+
                 NodeASTType::CommentMultilineOpener => {
-                    self.is_paused = self.comment_pauser.is_paused_after_evaluating(node_type);
+                    self.comment_pauser.is_paused_after_evaluating(node_type)
                 }
-                _ => {
-                    self.is_paused = false;
-                }
+                _ => false,
             }
         }
     }
@@ -107,20 +111,14 @@ impl Tree {
         let current_node = Rc::clone(&self.current_node.clone());
 
         if self.is_paused == false {
-            if returnable_node.node_type == NodeASTType::KeywordDeclare {
-                self.pause_writing(NodeASTType::KeywordDeclare);
-            }
-            if returnable_node.node_type == NodeASTType::KeywordType {
-                self.pause_writing(NodeASTType::KeywordType);
-            }
-            if returnable_node.node_type == NodeASTType::KeywordInterface {
-                self.pause_writing(NodeASTType::KeywordDeclare);
-            }
-            if returnable_node.node_type == NodeASTType::CommentLine {
-                self.pause_writing(NodeASTType::CommentLine);
-            }
-            if returnable_node.node_type == NodeASTType::CommentMultilineOpener {
-                self.pause_writing(NodeASTType::CommentMultilineOpener);
+            match returnable_node.node_type {
+                NodeASTType::KeywordDeclare
+                | NodeASTType::KeywordType
+                | NodeASTType::KeywordInterface
+                | NodeASTType::CommentLine
+                | NodeASTType::CommentMultilineOpener
+                | NodeASTType::KeywordAs => self.pause_writing(returnable_node.node_type),
+                _ => {}
             }
 
             if self.is_paused == false {
@@ -133,11 +131,6 @@ impl Tree {
                     NodeASTType::KeywordDeclare => {}
                     NodeASTType::VariableTypeSeperator => {}
                     _ => {
-                        println!(
-                            "appending value: ({}) with seperator: ({})",
-                            self.current_node.borrow().value.to_string().as_str(),
-                            self.current_node.borrow().seperator().to_string().as_str()
-                        );
                         self.output += self.current_node.borrow().value.to_string().as_str();
                         self.output += self.current_node.borrow().seperator().to_string().as_str();
                     }
@@ -159,10 +152,8 @@ impl Tree {
         // commit and
         // reset the current node tree for the next characters
         self.nodes.push(current_node.clone());
-        self.id_counter += 1;
         self.current_node = Rc::new(RefCell::new(Node {
-            id: self.id_counter,
-            parent: Some(current_node.clone()),
+            parent: parent,
             value: String::new(),
             node_type: NodeASTType::Unknown,
         }));
@@ -172,7 +163,6 @@ impl Tree {
 
 #[derive(Clone)]
 struct Node {
-    id: i8,
     parent: Option<Rc<RefCell<Node>>>,
     value: String,
     node_type: NodeASTType,
@@ -223,9 +213,11 @@ impl Node {
             "let" => NodeASTType::VariableDeclarator,
             "var" => NodeASTType::VariableDeclarator,
             "function" => NodeASTType::KeywordFunction,
+            "as" => NodeASTType::KeywordAs,
             "interface" => NodeASTType::KeywordInterface,
             "type" => NodeASTType::KeywordType,
             "{" => NodeASTType::OpeningBracket,
+            "," => NodeASTType::CommaSeperator,
             "}" => NodeASTType::ClosingBracket,
             "(" => NodeASTType::OpeningParenthesis,
             ")" => NodeASTType::ClosingParenthesis,
@@ -304,19 +296,12 @@ impl Node {
 
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let parent_id = match &self.parent {
-            Some(s) => {
-                let b = RefCell::clone(s);
-                let id = b.borrow().id;
-                id
-            }
-            None => 0,
-        };
-
         write!(
             f,
-            "(parent id: {}, value: {}, type: {})",
-            parent_id, self.value, self.node_type
+            "({}: {}, seperator: \"{}\")",
+            self.node_type,
+            self.value,
+            self.seperator()
         )
     }
 }
@@ -407,7 +392,7 @@ pub fn parser(contents: String) -> String {
         }
     }
 
-    // tree.debug();
+    tree.debug();
 
     return tree.output;
 }
