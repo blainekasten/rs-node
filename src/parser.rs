@@ -88,12 +88,11 @@ impl Tree {
                 NodeASTType::CommentLine => {
                     self.comment_pauser.is_paused_after_evaluating(node_type)
                 }
-
                 NodeASTType::CommentMultilineOpener => {
                     self.comment_pauser.is_paused_after_evaluating(node_type)
                 }
-                _ => false,
-            }
+                _ => self.is_paused,
+            };
         }
     }
 
@@ -126,6 +125,7 @@ impl Tree {
             "/*" => NodeASTType::CommentMultilineOpener,
             "*/" => NodeASTType::CommentMultilineCloser,
             "'" => NodeASTType::SingleQuote,
+            "\"" => NodeASTType::DoubleQuote,
             ":" => {
                 let parent = self.last_node();
                 let parent_type = parent.node_type;
@@ -212,15 +212,10 @@ impl Tree {
             }
         }
 
-        if self.is_paused {
-            self.consider_resuming_writing(node_type);
-        }
-
         // If the node was just white space we dont want to keep it in our list
         // of nodes to print
         if self.current_token.trim() == "" {
             self.current_token = String::new();
-            return;
         } else {
             // commit and
             // reset the current node tree for the next characters
@@ -235,6 +230,8 @@ impl Tree {
             self.current_token = String::new();
             self.nodes.push(new_node);
         }
+
+        self.consider_resuming_writing(node_type);
     }
 }
 
@@ -255,11 +252,6 @@ fn seperator(node_type: NodeASTType) -> &'static str {
 }
 
 impl Node {
-    fn reset(&mut self) {
-        self.value = String::new();
-        self.node_type = NodeASTType::Unknown;
-    }
-
     fn get_parent(&self) -> Node {
         match &self.parent {
             Some(parent) => {
@@ -297,19 +289,31 @@ pub fn parser(contents: String) -> String {
 
     for char in contents.chars() {
         let parent = tree.last_node();
-        println!("parent type {}", tree.last_node().node_type);
-        if parent.node_type == NodeASTType::SingleQuote {
-            let mut value = tree.current_token.clone();
-            value.push(char);
+        match parent.node_type {
+            NodeASTType::SingleQuote => {
+                let mut value = tree.current_token.clone();
+                value.push(char);
 
-            println!("{}", value);
-            tree.update_current_value(value.as_str());
+                tree.update_current_value(value.as_str());
 
-            if char == '\'' {
-                tree.commit();
+                if char == '\'' {
+                    tree.commit();
+                }
+                continue;
             }
-            continue;
-        }
+            NodeASTType::DoubleQuote => {
+                let mut value = tree.current_token.clone();
+                value.push(char);
+
+                tree.update_current_value(value.as_str());
+
+                if char == '"' {
+                    tree.commit();
+                }
+                continue;
+            }
+            _ => {}
+        };
 
         match char {
             ' ' => {
@@ -323,9 +327,13 @@ pub fn parser(contents: String) -> String {
                 tree.commit();
             }
             '\'' => {
-                println!("got a string opening!!!");
                 tree.commit();
                 tree.update_current_value("'");
+                tree.commit();
+            }
+            '"' => {
+                tree.commit();
+                tree.update_current_value("\"");
                 tree.commit();
             }
             '{' => {

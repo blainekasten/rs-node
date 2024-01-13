@@ -6,9 +6,9 @@ pub trait Pauser {
 
 pub struct NotPauser {}
 impl NotPauser {
-    pub fn new() -> NotPauser {
-        NotPauser {}
-    }
+    // pub fn new() -> NotPauser {
+    //     NotPauser {}
+    // }
 }
 impl Pauser for NotPauser {
     fn is_paused_after_evaluating(&mut self, _next_type: NodeASTType) -> bool {
@@ -46,10 +46,8 @@ impl Pauser for CommentPauser {
             }
             _ => {
                 if self.is_singline {
-                    return next_type == NodeASTType::EOL;
-                }
-
-                if self.is_multiline {
+                    return next_type != NodeASTType::EOL;
+                } else if self.is_multiline {
                     return next_type != NodeASTType::CommentMultilineCloser;
                 }
 
@@ -177,10 +175,6 @@ impl Pauser for KeywordTypePauser {
             return false;
         }
 
-        println!(
-            "returning is paused. {} {} {}",
-            next_type, self.opening_node, self.opening_brace_count
-        );
         return true;
     }
 }
