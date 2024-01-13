@@ -2,6 +2,9 @@ use std::fmt;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum NodeASTType {
+    SingleQuote,
+    DoubleQuote,
+    BacktickQuote,
     Module,
     Unknown,
     EOL,
@@ -40,6 +43,10 @@ impl fmt::Display for NodeASTType {
             f,
             "{}",
             match self {
+                NodeASTType::Module => "Module",
+                NodeASTType::SingleQuote => "SingleQuote",
+                NodeASTType::DoubleQuote => "DoubleQuote",
+                NodeASTType::BacktickQuote => "BacktickQuote",
                 NodeASTType::Unknown => "Unknown",
                 NodeASTType::EOL => "EOL",
                 NodeASTType::CommaSeperator => "CommaSeperator",
