@@ -114,7 +114,12 @@ impl Tree {
             "{" => NodeASTType::OpeningBracket,
             "," => NodeASTType::CommaSeperator,
             "}" => NodeASTType::ClosingBracket,
-            "(" => NodeASTType::OpeningParenthesis,
+            "(" => match self.last_node().node_type {
+                NodeASTType::FunctionDeclaration | NodeASTType::FunctionIdentifier => {
+                    NodeASTType::FunctionOpeningParenthesis
+                }
+                _ => NodeASTType::OpeningParenthesis,
+            },
             ")" => NodeASTType::ClosingParenthesis,
             "[" => NodeASTType::OpeningBrace,
             "||" => NodeASTType::OrStatement,
@@ -131,6 +136,10 @@ impl Tree {
                 let parent_type = parent.node_type;
                 if parent_type == NodeASTType::VariableDeclaration {
                     return NodeASTType::VariableTypeSeperator;
+                }
+
+                if parent_type == NodeASTType::FunctionIdentifier {
+                    return NodeASTType::FunctionIdentifierTypeSeperator;
                 }
                 if parent_type == NodeASTType::Identifier {
                     let parent = self.last_node();
@@ -165,17 +174,48 @@ impl Tree {
             }
             _ => {
                 let parent_type = self.last_node().node_type;
-                if parent_type == NodeASTType::KeywordFunction {
-                    return NodeASTType::FunctionDeclaration;
+                match parent_type {
+                    NodeASTType::FunctionOpeningParenthesis => NodeASTType::FunctionIdentifier,
+                    NodeASTType::KeywordFunction => NodeASTType::FunctionDeclaration,
+                    NodeASTType::VariableTypeSeperator => NodeASTType::TypeAnnotation,
+                    NodeASTType::VariableDeclarator => NodeASTType::VariableDeclaration,
+                    NodeASTType::FunctionIdentifierTypeSeperator => {
+                        NodeASTType::FunctionIdentifierType
+                    }
+                    _ => NodeASTType::Identifier,
                 }
-                if parent_type == NodeASTType::VariableTypeSeperator {
-                    return NodeASTType::TypeAnnotation;
-                }
-                if parent_type == NodeASTType::VariableDeclarator {
-                    return NodeASTType::VariableDeclaration;
-                }
-                return NodeASTType::Identifier;
             }
+        }
+    }
+
+    pub fn derive_parent(&self, node_type: NodeASTType) -> Node {
+        match node_type {
+            NodeASTType::FunctionOpeningParenthesis => {
+                let parent = self.last_node();
+                let grand_parent = self
+                    .nodes
+                    .get(self.nodes.len() - 2)
+                    .expect("should have another parent");
+
+                if parent.node_type == NodeASTType::KeywordFunction {
+                    return parent;
+                }
+                if grand_parent.node_type == NodeASTType::KeywordFunction {
+                    return grand_parent.clone();
+                }
+                return MODULE_NODE;
+            }
+            NodeASTType::FunctionIdentifier => match self.last_node().parent {
+                Some(p) => Node::from(p),
+                None => self.last_node(),
+            },
+            NodeASTType::FunctionIdentifierTypeSeperator => {
+                Node::from(self.last_node().parent.expect("parent will exist here"))
+            }
+            NodeASTType::FunctionIdentifierType => {
+                Node::from(self.last_node().parent.expect("parent will exist here"))
+            }
+            _ => self.last_node(),
         }
     }
 
@@ -219,7 +259,7 @@ impl Tree {
         } else {
             // commit and
             // reset the current node tree for the next characters
-            let parent = self.last_node();
+            let parent = self.derive_parent(node_type);
             let token = self.current_token.clone();
             let node_type = self.detect_type(token.clone());
             let new_node = Node {
@@ -252,6 +292,13 @@ fn seperator(node_type: NodeASTType) -> &'static str {
 }
 
 impl Node {
+    fn from(node: Box<Node>) -> Node {
+        Node {
+            value: node.value,
+            parent: node.parent,
+            node_type: node.node_type,
+        }
+    }
     fn get_parent(&self) -> Node {
         match &self.parent {
             Some(parent) => {
@@ -273,12 +320,17 @@ impl Node {
 
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let parent_type = match self.parent.clone() {
+            Some(p) => p.node_type,
+            None => NodeASTType::Unknown,
+        };
         write!(
             f,
-            "({}: {}, seperator: \"{}\")",
+            "({}: {}, seperator: \"{}\", parent: {})",
             self.node_type,
             self.value,
-            seperator(self.node_type)
+            seperator(self.node_type),
+            parent_type
         )
     }
 }

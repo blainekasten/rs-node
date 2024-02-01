@@ -1,1 +1,1 @@
-function foo(arg){console.log(arg);}
+function foo(arg,gen){console.log(arg,gen);}
